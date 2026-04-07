@@ -31,62 +31,60 @@ export function fmtMoney(n, compact = false) {
 }
 
 export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYear = 2025 }) {
-  const baseFilters = {
-    place_of_performance_scope: 'domestic',
-    place_of_performance_locations: [{ country: 'USA', state }],
-    time_period: [{ start_date: `${startYear}-10-01`, end_date: `${endYear}-09-30` }],
-  };
-
   const fields = [
     'Award ID', 'Recipient Name', 'Start Date', 'Award Amount',
     'Awarding Agency', 'Description',
     'Place of Performance City Name', 'Place of Performance State Code',
   ];
 
-  // Must split by award type group — USAspending rejects mixed groups
-  const queries = [
-    { ...baseFilters, award_type_codes: ['02', '03', '04', '05'] },  // grants
-    { ...baseFilters, award_type_codes: ['06', '10', '11'] },         // other financial assistance
-  ];
+  // Use keywords filter with city name — searches across recipient name,
+  // description, and place of performance fields
+  const filters = {
+    award_type_codes: ['02', '03', '04', '05'],
+    place_of_performance_scope: 'domestic',
+    place_of_performance_locations: [{ country: 'USA', state }],
+    keywords: [city],
+    time_period: [{ start_date: `${startYear}-10-01`, end_date: `${endYear}-09-30` }],
+  };
 
   const allResults = [];
+  let page = 1;
+  let hasNext = true;
 
-  for (const filters of queries) {
-    let page = 1;
-    let hasNext = true;
-    while (hasNext && page <= 5) {
-      const body = { subawards: false, limit: 100, page, filters, fields, sort: 'Award Amount', order: 'desc' };
-      const res = await fetch(`${API_BASE}/api/grants`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) { console.warn('batch error', res.status); break; }
-      const data = await res.json();
-      const results = data.results || [];
-      allResults.push(...results);
-      hasNext = data.page_metadata?.hasNext ?? false;
-      page++;
-      if (results.length === 0) break;
+  while (hasNext && page <= 10) {
+    const body = { subawards: false, limit: 100, page, filters, fields, sort: 'Award Amount', order: 'desc' };
+    const res = await fetch(`${API_BASE}/api/grants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `API error ${res.status}`);
     }
+    const data = await res.json();
+    const results = data.results || [];
+    allResults.push(...results);
+    hasNext = data.page_metadata?.hasNext ?? false;
+    page++;
+    if (results.length === 0) break;
   }
 
-  // NOTE: city filter temporarily disabled — showing all CA grants
-  // so we can inspect what city names USAspending actually returns.
-  // Re-enable once we confirm the exact city name format.
-  // const cityUpper = city.toUpperCase();
-  // const cityFiltered = allResults.filter(r =>
-  //   (r['Place of Performance City Name'] || '').toUpperCase() === cityUpper
-  // );
+  // Post-filter: keep only records where recipient name contains the city
+  // City name field is often null in USAspending — recipient name is more reliable
+  const cityUpper = city.toUpperCase();
+  const filtered = allResults.filter(r =>
+    (r['Recipient Name'] || '').toUpperCase().includes(cityUpper)
+  );
 
-  return allResults.map(r => ({
+  return filtered.map(r => ({
     id:        r['Award ID'] || '',
     recipient: r['Recipient Name'] || '',
     agency:    r['Awarding Agency'] || '',
     amount:    parseFloat(r['Award Amount']) || 0,
     start:     r['Start Date'] || '',
     desc:      r['Description'] || '',
-    city:      r['Place of Performance City Name'] || '',
+    city:      r['Place of Performance City Name'] || city,
     cat:       categorize(r['Awarding Agency'], r['Description']),
   }));
 }
