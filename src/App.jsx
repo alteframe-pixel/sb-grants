@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { fetchGrants, fetchCAGrants, fmtMoney, CAT_LABELS } from './utils.js';
 import YearChart from './components/YearChart.jsx';
 import PeerComparison from './components/PeerComparison.jsx';
+import Opportunities from './components/Opportunities.jsx';
 
 const CAT_COLORS = {
   housing:  { bg: '#E6F1FB', color: '#0C447C' },
@@ -94,7 +95,7 @@ export default function App() {
 
       {/* Tab nav */}
       <div style={{ display:'flex', gap:4, marginBottom:'2rem', borderBottom:'0.5px solid #ddd', paddingBottom:0 }}>
-        {[['history','Award history'],['peers','County comparison']].map(([id,label]) => (
+        {[['history','Award history'],['peers','County comparison'],['opportunities','Open grants']].map(([id,label]) => (
           <button key={id} onClick={()=>setTab(id)} style={{
             fontSize:13, padding:'8px 16px', border:'none', borderBottom: tab===id ? '2px solid #3266ad' : '2px solid transparent',
             background:'none', cursor:'pointer', color: tab===id ? '#3266ad' : '#666', fontWeight: tab===id ? 500 : 400,
@@ -103,7 +104,7 @@ export default function App() {
         ))}
       </div>
 
-      {tab === 'peers' ? <PeerComparison /> : (<>
+      {tab === 'peers' ? <PeerComparison /> : tab === 'opportunities' ? <Opportunities city="san-bruno" /> : (<>
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>San Bruno — Federal grant award history</h1>
         <p style={{ fontSize: 13, color: '#666' }}>Source: USAspending.gov &nbsp;·&nbsp; Grants &amp; financial assistance &nbsp;·&nbsp; Live data</p>
