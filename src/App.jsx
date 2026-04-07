@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { fetchGrants, fetchCAGrants, fmtMoney, CAT_LABELS } from './utils.js';
 import YearChart from './components/YearChart.jsx';
+import PeerComparison from './components/PeerComparison.jsx';
 
 const CAT_COLORS = {
   housing:  { bg: '#E6F1FB', color: '#0C447C' },
@@ -37,6 +38,7 @@ function MetricCard({ label, value, sub }) {
 }
 
 export default function App() {
+  const [tab, setTab] = useState('history');
   const [awards, setAwards]     = useState([]);
   const [status, setStatus]     = useState({ msg: 'Loading...', state: 'loading' });
   const [filterAg, setFilterAg] = useState('');
@@ -90,7 +92,18 @@ export default function App() {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2rem 1.5rem', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
-      {/* Header */}
+      {/* Tab nav */}
+      <div style={{ display:'flex', gap:4, marginBottom:'2rem', borderBottom:'0.5px solid #ddd', paddingBottom:0 }}>
+        {[['history','Award history'],['peers','County comparison']].map(([id,label]) => (
+          <button key={id} onClick={()=>setTab(id)} style={{
+            fontSize:13, padding:'8px 16px', border:'none', borderBottom: tab===id ? '2px solid #3266ad' : '2px solid transparent',
+            background:'none', cursor:'pointer', color: tab===id ? '#3266ad' : '#666', fontWeight: tab===id ? 500 : 400,
+            marginBottom:-1,
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'peers' ? <PeerComparison /> : (<>
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 4 }}>San Bruno — Federal grant award history</h1>
         <p style={{ fontSize: 13, color: '#666' }}>Source: USAspending.gov &nbsp;·&nbsp; Grants &amp; financial assistance &nbsp;·&nbsp; Live data</p>
@@ -181,11 +194,10 @@ export default function App() {
         <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} style={btnStyle}>Next →</button>
       </div>
 
+    </>)}
     </div>
   );
 }
-
-// Small style helpers
 const selStyle = { fontSize: 12, padding: '5px 9px', border: '0.5px solid #ccc', borderRadius: 8, background: '#fff', color: '#1a1a1a', cursor: 'pointer' };
 const btnStyle = { fontSize: 12, padding: '4px 12px', border: '0.5px solid #ccc', borderRadius: 8, background: '#fff', cursor: 'pointer' };
 const thStyle  = { padding: '9px 10px', textAlign: 'left', fontWeight: 500, fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '0.5px solid #eee' };
