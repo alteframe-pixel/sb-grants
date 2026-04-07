@@ -31,30 +31,10 @@ export function fmtMoney(n, compact = false) {
   return '$' + Math.round(n).toLocaleString();
 }
 
-// Step 1: resolve a city to its USAspending location ID
-async function resolveLocationId(city, state) {
-  const res = await fetch(`${API_BASE}/api/grants?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`);
-  if (!res.ok) throw new Error(`Location lookup failed: ${res.status}`);
-  const data = await res.json();
-  // Results are objects with a location_id field
-  const results = data.results || [];
-  if (!results.length) throw new Error(`No location ID found for ${city}, ${state}`);
-  // Find exact city match
-  const match = results.find(r =>
-    (r.city_name || '').toUpperCase() === city.toUpperCase()
-  ) || results[0];
-  return match.location_id;
-}
-
 export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYear = 2025 }) {
-  // Resolve city to location ID first
-  let locationId;
-  try {
-    locationId = await resolveLocationId(city, state);
-  } catch (e) {
-    throw new Error(`Could not resolve location for ${city}, ${state}: ${e.message}`);
-  }
-
+  // USAspending place_of_performance_locations uses numeric IDs which are
+  // unstable — instead we query by state and filter by city in the description
+  // field using keywords, then post-filter client-side by city name.
   const body = {
     subawards: false,
     limit: 100,
@@ -62,10 +42,17 @@ export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYea
     filters: {
       award_type_codes: ['02','03','04','05','06','07','08','09','10','11'],
       place_of_performance_scope: 'domestic',
-      place_of_performance_locations: [locationId],
+      // Filter by state code — the correct supported format
+      place_of_performance_locations: [{ country: 'USA', state: state }],
+      // Also keyword-filter to narrow to city
+      keywords: [city],
       time_period: [{ start_date: `${startYear}-10-01`, end_date: `${endYear}-09-30` }],
     },
-    fields: ['Award ID','Recipient Name','Start Date','Award Amount','Awarding Agency','Description'],
+    fields: [
+      'Award ID', 'Recipient Name', 'Start Date', 'Award Amount',
+      'Awarding Agency', 'Description',
+      'Place of Performance City Name', 'Place of Performance State Code',
+    ],
     sort: 'Award Amount',
     order: 'desc',
   };
@@ -102,6 +89,8 @@ export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYea
     amount:    parseFloat(r['Award Amount']) || 0,
     start:     r['Start Date'] || '',
     desc:      r['Description'] || '',
+    city:      r['Place of Performance City Name'] || '',
     cat:       categorize(r['Awarding Agency'], r['Description']),
   }));
 }
+
