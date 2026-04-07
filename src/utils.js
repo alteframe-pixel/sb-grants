@@ -1,4 +1,3 @@
-// Determine if we're running locally or on Vercel
 export const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
 
 export const CATEGORIES = {
@@ -32,57 +31,53 @@ export function fmtMoney(n, compact = false) {
 }
 
 export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYear = 2025 }) {
-  // USAspending place_of_performance_locations uses numeric IDs which are
-  // unstable — instead we query by state and filter by city in the description
-  // field using keywords, then post-filter client-side by city name.
-  const body = {
-    subawards: false,
-    limit: 100,
-    page: 1,
-    filters: {
-      award_type_codes: ['02','03','04','05','06','07','08','09','10','11'],
-      place_of_performance_scope: 'domestic',
-      // Filter by state code — the correct supported format
-      place_of_performance_locations: [{ country: 'USA', state: state }],
-      // Also keyword-filter to narrow to city
-      keywords: [city],
-      time_period: [{ start_date: `${startYear}-10-01`, end_date: `${endYear}-09-30` }],
-    },
-    fields: [
-      'Award ID', 'Recipient Name', 'Start Date', 'Award Amount',
-      'Awarding Agency', 'Description',
-      'Place of Performance City Name', 'Place of Performance State Code',
-    ],
-    sort: 'Award Amount',
-    order: 'desc',
+  const baseFilters = {
+    place_of_performance_scope: 'domestic',
+    place_of_performance_locations: [{ country: 'USA', state }],
+    time_period: [{ start_date: `${startYear}-10-01`, end_date: `${endYear}-09-30` }],
   };
 
+  const fields = [
+    'Award ID', 'Recipient Name', 'Start Date', 'Award Amount',
+    'Awarding Agency', 'Description',
+    'Place of Performance City Name', 'Place of Performance State Code',
+  ];
+
+  // Must split by award type group — USAspending rejects mixed groups
+  const queries = [
+    { ...baseFilters, award_type_codes: ['02', '03', '04', '05'] },  // grants
+    { ...baseFilters, award_type_codes: ['06', '10', '11'] },         // other financial assistance
+  ];
+
   const allResults = [];
-  let page = 1;
-  let hasNext = true;
 
-  while (hasNext && page <= 10) {
-    body.page = page;
-    const res = await fetch(`${API_BASE}/api/grants`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `API error ${res.status}`);
+  for (const filters of queries) {
+    let page = 1;
+    let hasNext = true;
+    while (hasNext && page <= 5) {
+      const body = { subawards: false, limit: 100, page, filters, fields, sort: 'Award Amount', order: 'desc' };
+      const res = await fetch(`${API_BASE}/api/grants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { console.warn('batch error', res.status); break; }
+      const data = await res.json();
+      const results = data.results || [];
+      allResults.push(...results);
+      hasNext = data.page_metadata?.hasNext ?? false;
+      page++;
+      if (results.length === 0) break;
     }
-
-    const data = await res.json();
-    const results = data.results || [];
-    allResults.push(...results);
-    hasNext = data.page_metadata?.hasNext ?? false;
-    page++;
-    if (results.length === 0) break;
   }
 
-  return allResults.map(r => ({
+  // Post-filter by city
+  const cityUpper = city.toUpperCase();
+  const cityFiltered = city
+    ? allResults.filter(r => (r['Place of Performance City Name'] || '').toUpperCase() === cityUpper)
+    : allResults;
+
+  return cityFiltered.map(r => ({
     id:        r['Award ID'] || '',
     recipient: r['Recipient Name'] || '',
     agency:    r['Awarding Agency'] || '',
@@ -93,4 +88,3 @@ export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYea
     cat:       categorize(r['Awarding Agency'], r['Description']),
   }));
 }
-
