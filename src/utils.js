@@ -88,3 +88,15 @@ export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYea
     cat:       categorize(r['Awarding Agency'], r['Description']),
   }));
 }
+
+// Fetch California state grants from CA Grants Portal (FY2022-23 onward)
+export async function fetchCAGrants({ city }) {
+  const res = await fetch(`${API_BASE}/api/ca-grants?city=${encodeURIComponent(city)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.results || []).map(r => ({
+    ...r,
+    source: 'CA State',
+    cat: categorize(r.agency, r.desc),
+  }));
+}

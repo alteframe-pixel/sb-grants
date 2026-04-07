@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { fetchGrants, fmtMoney, CAT_LABELS } from './utils.js';
+import { fetchGrants, fetchCAGrants, fmtMoney, CAT_LABELS } from './utils.js';
 import YearChart from './components/YearChart.jsx';
 
 const CAT_COLORS = {
@@ -45,14 +45,24 @@ export default function App() {
   const [page, setPage]         = useState(1);
 
   useEffect(() => {
-    fetchGrants({ city: 'San Bruno' })
-      .then(data => {
-        setAwards(data);
-        setStatus({ msg: `Loaded ${data.length} federal grant awards · USAspending.gov`, state: 'ok' });
-      })
-      .catch(err => {
-        setStatus({ msg: 'Error: ' + err.message, state: 'error' });
+    setStatus({ msg: 'Loading federal grants...', state: 'loading' });
+    Promise.allSettled([
+      fetchGrants({ city: 'San Bruno' }),
+      fetchCAGrants({ city: 'San Bruno' }),
+    ]).then(([federal, state]) => {
+      const federalData = federal.status === 'fulfilled' ? federal.value : [];
+      const stateData   = state.status   === 'fulfilled' ? state.value   : [];
+      // Tag source
+      const tagged = [
+        ...federalData.map(a => ({ ...a, source: a.source || 'Federal' })),
+        ...stateData.map(a => ({ ...a, source: 'CA State' })),
+      ].sort((a, b) => b.amount - a.amount);
+      setAwards(tagged);
+      setStatus({
+        msg: `Loaded ${federalData.length} federal + ${stateData.length} CA state grants · USAspending.gov & CA Grants Portal`,
+        state: 'ok'
       });
+    });
   }, []);
 
   const agencies = useMemo(() => [...new Set(awards.map(a => a.agency).filter(Boolean))].sort(), [awards]);
@@ -126,11 +136,12 @@ export default function App() {
           <thead>
             <tr style={{ background: '#f5f5f3' }}>
               <Th style={{ width: '13%' }}>Award ID</Th>
-              <Th style={{ width: '26%' }}>Recipient</Th>
-              <Th style={{ width: '21%' }}>Agency</Th>
-              <Th style={{ width: '11%' }}>Category</Th>
+              <Th style={{ width: '22%' }}>Recipient</Th>
+              <Th style={{ width: '19%' }}>Agency</Th>
+              <Th style={{ width: '9%'  }}>Source</Th>
+              <Th style={{ width: '10%' }}>Category</Th>
               <Th style={{ width: '7%'  }}>Year</Th>
-              <Th style={{ width: '13%', textAlign: 'right' }}>Amount</Th>
+              <Th style={{ width: '11%', textAlign: 'right' }}>Amount</Th>
               <Th style={{ width: '9%',  textAlign: 'center' }}>Link</Th>
             </tr>
           </thead>
@@ -142,8 +153,15 @@ export default function App() {
             ) : pageData.map((a, i) => (
               <tr key={a.id + i} style={{ borderTop: '0.5px solid #eee' }}>
                 <Td style={{ fontFamily: 'monospace', fontSize: 11 }} title={a.id}>{trunc(a.id, 14)}</Td>
-                <Td title={a.recipient}>{trunc(a.recipient, 30)}</Td>
-                <Td title={a.agency}>{trunc(a.agency, 26)}</Td>
+                <Td title={a.recipient}>{trunc(a.recipient, 26)}</Td>
+                <Td title={a.agency}>{trunc(a.agency, 24)}</Td>
+                <Td>
+                  <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 500,
+                    background: a.source === 'CA State' ? '#FAEEDA' : '#E6F1FB',
+                    color:      a.source === 'CA State' ? '#633806' : '#0C447C' }}>
+                    {a.source === 'CA State' ? 'CA State' : 'Federal'}
+                  </span>
+                </Td>
                 <Td><Badge cat={a.cat} /></Td>
                 <Td>{(a.start || '—').substring(0, 4)}</Td>
                 <Td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(a.amount)}</Td>
