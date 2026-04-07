@@ -71,13 +71,15 @@ export async function fetchGrants({ city, state = 'CA', startYear = 2010, endYea
     }
   }
 
-  // Post-filter by city
-  const cityUpper = city.toUpperCase();
-  const cityFiltered = city
-    ? allResults.filter(r => (r['Place of Performance City Name'] || '').toUpperCase() === cityUpper)
-    : allResults;
+  // NOTE: city filter temporarily disabled — showing all CA grants
+  // so we can inspect what city names USAspending actually returns.
+  // Re-enable once we confirm the exact city name format.
+  // const cityUpper = city.toUpperCase();
+  // const cityFiltered = allResults.filter(r =>
+  //   (r['Place of Performance City Name'] || '').toUpperCase() === cityUpper
+  // );
 
-  return cityFiltered.map(r => ({
+  return allResults.map(r => ({
     id:        r['Award ID'] || '',
     recipient: r['Recipient Name'] || '',
     agency:    r['Awarding Agency'] || '',
