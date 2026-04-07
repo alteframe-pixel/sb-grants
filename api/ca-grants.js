@@ -5,13 +5,11 @@ const CSV_URLS = {
 
 function parseRow(line) {
   const result = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQuotes = !inQuotes; }
+  let current = '', inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') inQuotes = !inQuotes;
     else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; }
-    else { current += ch; }
+    else current += ch;
   }
   result.push(current.trim());
   return result;
@@ -42,31 +40,33 @@ export default async function handler(req, res) {
     try {
       const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
       if (!r.ok) continue;
-      const text = await r.text();
-      const rows = parseCSV(text);
+      const rows = parseCSV(await r.text());
 
-      // Filter: RecipientName or CountiesServed or GeographicLocationServedNotes contains city
-      const cityRows = rows.filter(row =>
-        (row['RecipientName'] || '').toUpperCase().includes(city) ||
-        (row['GeographicLocationServedNotes'] || '').toUpperCase().includes(city) ||
-        (row['CountiesServed'] || '').toUpperCase().includes('SAN MATEO')
-      );
+      // Only include rows where RecipientName directly contains the city name
+      // This avoids the county-level false positives
+      rows
+        .filter(row => (row['RecipientName'] || '').toUpperCase().includes(city))
+        .forEach(row => {
+          // TotalNominalAmount is the grant face value; TotalAwardUsed is what was spent
+          // Both are often blank — show what we have
+          const rawAmount = row['TotalNominalAmount'] || row['TotalAwardUsed'] || '0';
+          const amount = parseFloat(rawAmount.replace(/[$,]/g, '')) || 0;
 
-      cityRows.forEach(row => {
-        const amount = parseFloat(row['TotalAwardUsed'] || row['TotalNominalAmount'] || '0') || 0;
-        allAwards.push({
-          id:        row['GrantID'] || row['PortalID'] || '',
-          recipient: row['RecipientName'] || '',
-          agency:    row['AgencyDept'] || '',
-          amount,
-          start:     (row['ProjectStartDate'] || '').substring(0, 10),
-          desc:      row['ProjectTitle'] || '',
-          city:      city,
-          source:    'CA State',
-          cat:       'other',
-          fiscalYear: row['FiscalYear'] || key,
+          allAwards.push({
+            id:        row['GrantID'] || row['PortalID'] || '',
+            recipient: row['RecipientName'] || '',
+            agency:    row['AgencyDept'] || '',
+            amount,
+            start:     (row['ProjectStartDate'] || '').substring(0, 10),
+            desc:      row['ProjectTitle'] || '',
+            city,
+            source:    'CA State',
+            cat:       'other',
+            fiscalYear: row['FiscalYear'] || key,
+            // Link to the grant detail page on grants.ca.gov
+            portalUrl: row['PortalID'] ? `https://www.grants.ca.gov/grants/${row['PortalID']}/` : '',
+          });
         });
-      });
     } catch (e) {
       console.warn('CA CSV error:', key, e.message);
     }
